@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "body-parser": "^2.2.2",
+    "express": "^5.2.1",
+    "python-shell": "^5.0.0",
+    "ws": "^8.19.0"
+  }
+}
