@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>カメラ映像とボタン</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column; /* 要素を縦方向に並べる */
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            font-family: sans-serif;
+        }
+
+        .video-wrapper {
+            position: relative; /* トグルボタンの配置基準 */
+            margin-bottom: 30px; /* 動画とボタンの間にスペース */
+            width: 600px; /* 動画表示エリアの幅 */
+            height: 450px; /* 動画表示エリアの高さ */
+            background-color: #333; /* 映像がないときの背景色 */
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            display: flex; /* 動画を中央に配置するために追加 */
+            justify-content: center;
+            align-items: center;
+        }
+
+        #cameraFeed {
+            width: 100%; /* コンテナの幅いっぱいに表示 */
+            height: 100%; /* コンテナの高さいっぱいに表示 */
+            object-fit: cover; /* 縦横比を保ちつつ、コンテナを埋める */
+            background-color: black; /* 映像がないときの背景色 */
+            display: block; /* 余白をなくす */
+        }
+
+        #toggleCameraButton {
+            position: absolute; /* 親要素（.video-wrapper）を基準に配置 */
+            top: 15px; /* 上からの位置 */
+            right: 15px; /* 右からの位置 */
+            background-color: rgba(0, 0, 0, 0.6); /* 半透明の背景 */
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 8px 12px;
+            font-size: 14px;
+            cursor: pointer;
+            z-index: 10; /* 動画の上に表示されるように */
+            transition: background-color 0.3s ease;
+        }
+
+        #toggleCameraButton:hover {
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+
+        .form-and-buttons-container {
+            display: flex;
+            gap: 50px; /* ボタン間のスペース */
+        }
+
+        .button {
+            width: 400px;
+            height: 200px;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.3s ease, background-color 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 無効化されたボタンのスタイル */
+        .button:disabled {
+            background-color: #cccccc !important; /* 無効時はグレー */
+            cursor: not-allowed; /* カーソルを禁止マークに */
+            opacity: 0.7; /* 少し透明にする */
+            box-shadow: none; /* 影をなくす */
+        }
+
+        /* ボタン1の色 */
+        .button.button1 {
+            background-color: #FFDAB9; /* 薄いオレンジ (PeachPuff) */
+        }
+
+        /* ボタン2の色 */
+        .button.button2 {
+            background-color: #ADD8E6; /* 薄い青 (LightBlue) */
+        }
+
+        .button:hover:not(:disabled) { /* 無効化されていないボタンのみホバー効果 */
+            opacity: 0.8;
+        }
+
+        .message {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="video-wrapper">
+        <video id="cameraFeed" autoplay playsinline></video>
+        <button id="toggleCameraButton">カメラをオフにする</button>
+    </div>
+
+    <form class="button-form" action="/submit-common" method="post">
+        <div class="form-and-buttons-container">
+            <button type="submit" class="button button1" id="button1" name="button_id" value="button1" disabled>ボタン1</button>
+            <button type="submit" class="button button2" id="button2" name="button_id" value="button2" disabled>ボタン2</button>
+        </div>
+    </form>
+
+    <div class="message" id="errorMessage"></div>
+
+    <script>
+        const video = document.getElementById('cameraFeed');
+        const toggleButton = document.getElementById('toggleCameraButton');
+        const errorMessageDiv = document.getElementById('errorMessage');
+        const button1 = document.getElementById('button1'); // ボタン1の要素を取得
+        const button2 = document.getElementById('button2'); // ボタン2の要素を取得
+
+        let currentStream;
+        let isCameraOn = false;
+
+        // ボタンの有効/無効を切り替える関数
+        function setButtonsEnabled(enabled) {
+            button1.disabled = !enabled;
+            button2.disabled = !enabled;
+            // 必要であれば、ここでボタンの見た目も変更できます（例：opacity, cursor）
+        }
+
+        async function startCamera() {
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    video.srcObject = stream;
+                    video.onloadedmetadata = () => {
+                        video.play();
+                    };
+                    currentStream = stream;
+                    isCameraOn = true;
+                    toggleButton.textContent = 'カメラをオフにする';
+                    errorMessageDiv.textContent = '';
+                    setButtonsEnabled(true); // カメラオンでボタンを有効化
+                } catch (err) {
+                    console.error("カメラへのアクセスに失敗しました: " + err.name + " " + err.message);
+                    errorMessageDiv.textContent = "カメラへのアクセスに失敗しました。ブラウザの設定で許可してください。";
+                    isCameraOn = false;
+                    toggleButton.textContent = 'カメラをオンにする';
+                    setButtonsEnabled(false); // カメラオンに失敗したらボタンを無効化
+                }
+            } else {
+                errorMessageDiv.textContent = "お使いのブラウザはカメラアクセスをサポートしていません。";
+                console.error("getUserMediaがサポートされていません。");
+                isCameraOn = false;
+                toggleButton.textContent = 'カメラをオンにする';
+                setButtonsEnabled(false); // サポートされていない場合はボタンを無効化
+            }
+        }
+
+        function stopCamera() {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => {
+                    track.stop();
+                });
+                video.srcObject = null;
+                isCameraOn = false;
+                toggleButton.textContent = 'カメラをオンにする';
+                setButtonsEnabled(false); // カメラオフでボタンを無効化
+            }
+        }
+
+        toggleButton.addEventListener('click', () => {
+            if (isCameraOn) {
+                stopCamera();
+            } else {
+                startCamera();
+            }
+        });
+
+        // ページ読み込み時にカメラを起動
+        startCamera();
+    </script>
+</body>
+</html>

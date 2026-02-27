@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>出勤登録完了</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #e8ffe8; /* 薄い緑色 */
+            font-family: sans-serif;
+            text-align: center;
+        }
+        h1 {
+            color: #28a745; /* 緑色 */
+            margin-bottom: 20px;
+            font-size: 2.5em;
+        }
+        #resultName {
+            font-size: 3em;
+            color: #28a745;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        #currentTime { /* 時刻表示用のスタイルを追加 */
+            font-size: 4em; /* 大きめのフォントサイズ */
+            font-weight: bold;
+            color: #007bff; /* 青色 */
+            margin-bottom: 30px;
+            background-color: #f0f8ff; /* 薄い青の背景 */
+            padding: 15px 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        .message {
+            font-size: 1.5em;
+            color: #555;
+            margin-bottom: 40px;
+        }
+        .back-button {
+            padding: 15px 30px;
+            font-size: 1.2em;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background-color 0.3s ease;
+        }
+        .back-button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>出勤登録が完了しました！</h1>
+    <div id="resultName"></div>
+    <div id="currentTime"></div> <div class="message">本日もお疲れ様です。</div>
+    <a href="/" class="back-button">戻る</a>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const resultNameDiv = document.getElementById('resultName');
+            const currentTimeDiv = document.getElementById('currentTime'); // 時刻表示要素を取得
+            const urlParams = new URLSearchParams(window.location.search);
+            const recognizedName = urlParams.get('name');
+
+            if (recognizedName) {
+                resultNameDiv.textContent = recognizedName + 'さん';
+            } else {
+                resultNameDiv.textContent = '不明な方';
+                resultNameDiv.style.color = '#dc3545'; // エラー色
+            }
+
+            // 現在の時刻を取得して表示
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = (now.getMonth() + 1).toString().padStart(2, '0');
+            const day = now.getDate().toString().padStart(2, '0');
+            const hours = now.getHours().toString().padStart(2, '0');
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            const seconds = now.getSeconds().toString().padStart(2, '0');
+            
+            currentTimeDiv.textContent = `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+        });
+    </script>
+</body>
+</html>

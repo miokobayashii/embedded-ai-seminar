@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>カメラ映像と顔認証</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            font-family: sans-serif;
+        }
+
+        .video-wrapper {
+            position: relative;
+            margin-bottom: 20px;
+            width: 600px;
+            height: 450px;
+            background-color: #333;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #cameraStream {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            background-color: black;
+            display: block;
+        }
+
+        #toggleCameraButton {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 8px 12px;
+            font-size: 14px;
+            cursor: pointer;
+            z-index: 10;
+            transition: background-color 0.3s ease;
+        }
+
+        #toggleCameraButton:hover {
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+
+        #recognizedNameDisplay {
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #4CAF50;
+            background-color: #e8ffe8;
+            padding: 15px 30px;
+            border-radius: 10px;
+            min-height: 1.2em;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            width: 80%;
+            max-width: 600px;
+        }
+
+        /* buttons-form-container 自体は単一のフォームを包含 */
+        .buttons-form-container {
+            margin-top: 20px;
+            /* display: flex; /* この要素にはflexboxを直接適用しない */
+        }
+
+        /* フォーム内のボタンを囲む新しいdivにflexboxを適用 */
+        .buttons-wrapper { /* 新しいCSSクラス */
+            display: flex;
+            gap: 50px; /* ボタン間のスペース */
+            justify-content: center; /* ボタンを中央揃え */
+        }
+
+        .button {
+            width: 400px;
+            height: 200px;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.3s ease, background-color 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .button:disabled {
+            background-color: #cccccc !important;
+            cursor: not-allowed;
+            opacity: 0.7;
+            box-shadow: none;
+        }
+
+        .button.button1 {
+            background-color: #FFDAB9;
+        }
+
+        .button.button2 {
+            background-color: #ADD8E6;
+        }
+
+        .button:hover:not(:disabled) {
+            opacity: 0.8;
+        }
+
+        .message {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #555;
+            min-height: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="video-wrapper">
+        <img id="cameraStream" src="" alt="リアルタイムカメラ映像">
+        <button id="toggleCameraButton">カメラをオンにする</button>
+    </div>
+
+    <div id="recognizedNameDisplay"></div>
+
+    <div class="buttons-form-container">
+        <form action="/submit_button" method="post">
+            <input type="hidden" id="recognizedNameInput" name="recognized_person_name" value=""> <div class="buttons-wrapper">
+                <button type="submit" class="button button1" name="button_id" value="button1" id="button1" disabled>出勤</button>
+                <button type="submit" class="button button2" name="button_id" value="button2" id="button2" disabled>退勤</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="message" id="errorMessage"></div>
+
+    <script>
+        const cameraStreamImg = document.getElementById('cameraStream');
+        const toggleButton = document.getElementById('toggleCameraButton');
+        const errorMessageDiv = document.getElementById('errorMessage');
+        const button1 = document.getElementById('button1');
+        const button2 = document.getElementById('button2');
+        const recognizedNameDisplay = document.getElementById('recognizedNameDisplay');
+
+        // hidden inputフィールドへの参照も取得 (今回は一つにまとめる)
+        const recognizedNameInput = document.getElementById('recognizedNameInput');
+
+        let isCameraActive = false;
+        let wsAuthStatus;
+
+        function setButtonsEnabled(enabled) {
+            button1.disabled = !enabled;
+            button2.disabled = !enabled;
+        }
+
+        function startCameraStream() {
+            errorMessageDiv.textContent = 'カメラを起動中...';
+            cameraStreamImg.src = '/start_camera_stream';
+            cameraStreamImg.style.display = 'block';
+
+            cameraStreamImg.onerror = function() {
+                errorMessageDiv.textContent = "カメラストリームの読み込みに失敗しました。サーバーが実行されているか、カメラにアクセスできるか確認してください。";
+                cameraStreamImg.src = '';
+                cameraStreamImg.style.display = 'none';
+                isCameraActive = false;
+                toggleButton.textContent = 'カメラをオンにする';
+                setButtonsEnabled(false);
+                if (wsAuthStatus) wsAuthStatus.close();
+            };
+
+            if (!wsAuthStatus || wsAuthStatus.readyState === WebSocket.CLOSED) {
+                connectWebSocket();
+            }
+        }
+
+        async function stopCameraStream() {
+            try {
+                const response = await fetch('/stop_camera_stream', { method: 'POST' });
+                cameraStreamImg.src = '';
+                cameraStreamImg.style.display = 'none';
+                isCameraActive = false;
+                toggleButton.textContent = 'カメラをオンにする';
+                setButtonsEnabled(false);
+                recognizedNameDisplay.textContent = '';
+                // hidden input の値もクリア
+                recognizedNameInput.value = '';
+
+                errorMessageDiv.textContent = 'カメラはオフです。';
+                if (wsAuthStatus) wsAuthStatus.close();
+            } catch (error) {
+                console.error('Failed to stop camera stream:', error);
+                errorMessageDiv.textContent = 'カメラの停止中にエラーが発生しました。';
+            }
+        }
+
+        toggleButton.addEventListener('click', () => {
+            if (isCameraActive) {
+                stopCameraStream();
+            } else {
+                startCameraStream();
+            }
+        });
+
+        const eventSource = new EventSource('/camera_status_updates');
+
+        eventSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            if (data.isCameraOn !== undefined) {
+                isCameraActive = data.isCameraOn;
+                setButtonsEnabled(isCameraActive);
+                toggleButton.textContent = isCameraActive ? 'カメラをオフにする' : 'カメラをオンにする';
+                if (isCameraActive) {
+                    errorMessageDiv.textContent = '';
+                    cameraStreamImg.style.display = 'block';
+                    if (!wsAuthStatus || wsAuthStatus.readyState === WebSocket.CLOSED) {
+                        connectWebSocket();
+                    }
+                } else {
+                     errorMessageDiv.textContent = 'カメラはオフです。';
+                     cameraStreamImg.src = '';
+                     cameraStreamImg.style.display = 'none';
+                     recognizedNameDisplay.textContent = '';
+                     // hidden input の値もクリア
+                     recognizedNameInput.value = '';
+                     if (wsAuthStatus) wsAuthStatus.close();
+                }
+            }
+            if (data.error) {
+                errorMessageDiv.textContent = data.message;
+                cameraStreamImg.src = '';
+                cameraStreamImg.style.display = 'none';
+                isCameraActive = false;
+                setButtonsEnabled(false);
+                toggleButton.textContent = 'カメラをオンにする';
+                recognizedNameDisplay.textContent = '';
+                // hidden input の値もクリア
+                recognizedNameInput.value = '';
+                if (wsAuthStatus) wsAuthStatus.close();
+            }
+        };
+
+        eventSource.onerror = function(event) {
+            console.error('EventSource failed:', event);
+            errorMessageDiv.textContent = 'サーバーとの接続が失われました。ページをリロードしてください。';
+            eventSource.close();
+            if (wsAuthStatus) wsAuthStatus.close();
+        };
+
+        function connectWebSocket() {
+            if (wsAuthStatus && wsAuthStatus.readyState === WebSocket.OPEN) {
+                console.log("WebSocket connection already open.");
+                return;
+            }
+
+            wsAuthStatus = new WebSocket('ws://' + window.location.host + '/ws_auth_status');
+
+            wsAuthStatus.onopen = () => {
+                console.log('WebSocket connection established for auth status.');
+                recognizedNameDisplay.textContent = '';
+                recognizedNameInput.value = ''; // 接続開始時にhidden inputもクリア
+            };
+
+            wsAuthStatus.onmessage = event => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.recognized_names && data.recognized_names.length > 0) {
+                        const recognizedNamesStr = data.recognized_names.join(', ');
+                        recognizedNameDisplay.textContent = recognizedNamesStr;
+                        // hidden input の値を更新 (一つだけ)
+                        recognizedNameInput.value = recognizedNamesStr;
+                    } else {
+                        recognizedNameDisplay.textContent = '';
+                        // hidden input の値もクリア
+                        recognizedNameInput.value = '';
+                    }
+                } catch (e) {
+                    console.error('Error parsing WebSocket message:', e, event.data);
+                }
+            };
+
+            wsAuthStatus.onclose = () => {
+                console.log('WebSocket connection closed for auth status.');
+                recognizedNameDisplay.textContent = '';
+                recognizedNameInput.value = '';
+            };
+
+            wsAuthStatus.onerror = error => {
+                console.error('WebSocket error for auth status:', error);
+                recognizedNameDisplay.textContent = '';
+                recognizedNameInput.value = '';
+            };
+        }
+
+        window.addEventListener('load', () => {
+            startCameraStream();
+        });
+    </script>
+</body>
+</html>
