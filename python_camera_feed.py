@@ -8,6 +8,7 @@ import pickle
 import json # JSONを扱うためにインポート
 import websocket # websocket-client ライブラリをインポート
 
+import ibeacon_process as ibcon
 # --- 顔認証のための設定 ---
 ENCODINGS_FILE = "encodings.pkl"
 TOLERANCE = 0.6 
@@ -81,6 +82,11 @@ def generate_frames():
 
                 if best_match_index != -1 and face_distances[best_match_index] < TOLERANCE:
                     name = known_face_names[best_match_index]
+                    if name != "Unknown":
+                       print (f"{name}")
+                       beacon = ibcon.iBeaconProcess()
+                        # 1秒間ビーコンを発信
+                       beacon.start_beacon(duration=1)
                 
                 recognized_names_in_frame.append(name) # 認識された名前を追加
 
