@@ -20,6 +20,7 @@ import threading
 import queue
 import os
 
+import ibeacon_process as ibcon
 # --- 顔認証のための設定 ---
 ENCODINGS_FILE = "encodings.pkl"
 TOLERANCE = 0.6 
@@ -73,6 +74,21 @@ def process_and_encode_frames(frame_queue):
                 
                 recognized_names_in_frame.append(name)
                 top *= 4; right *= 4; bottom *= 4; left *= 4
+                best_match_index = -1
+                if len(face_distances) > 0:
+                    best_match_index = face_distances.argmin()
+
+                if best_match_index != -1 and face_distances[best_match_index] < TOLERANCE:
+                    name = known_face_names[best_match_index]
+                    if name != "Unknown":
+                       print (f"{name}")
+                       beacon = ibcon.iBeaconProcess()
+                        # 1秒間ビーコンを発信
+                       beacon.start_beacon(duration=1)
+                
+                recognized_names_in_frame.append(name) # 認識された名前を追加
+
+                # 検出された顔の周りに矩形を描画
                 cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
                 cv2.putText(frame, name, (left + 6, bottom - 6), cv2.FONT_HERSHEY_DUPLEX, 0.8, (255, 255, 255), 1)
 
