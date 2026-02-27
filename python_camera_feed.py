@@ -6,7 +6,19 @@ import time
 import face_recognition
 import pickle
 import json # JSONを扱うためにインポート
-import websocket # websocket-client ライブラリをインポート
+try:
+    import websocket
+    from websocket import create_connection
+except ImportError:
+    sys.stderr.write("Error: websocket-client is not installed. Run 'pip install websocket-client'.\n")
+    sys.exit(1)
+except AttributeError:
+    sys.stderr.write("Error: 'websocket' conflict detected. Run 'pip uninstall websocket websocket-client' then 'pip install websocket-client'.\n")
+    sys.exit(1)
+
+import threading
+import queue
+import os
 
 # --- 顔認証のための設定 ---
 ENCODINGS_FILE = "encodings.pkl"
@@ -33,104 +45,85 @@ except FileNotFoundError:
 except Exception as e:
     sys.stderr.write(f"Error loading encodings: {e}\n")
     sys.exit(1)
-
-# --- ここから generate_frames 関数 ---
-def generate_frames():
-    global ws # グローバルなwsオブジェクトを使用
-
-    # WebSocket接続を確立
+# --- フレーム処理スレッド (軽量化版) ---
+def process_and_encode_frames(frame_queue):
+    global wn
     try:
-        ws = websocket.create_connection(WEBSOCKET_URL)
-        print(f"Successfully connected to WebSocket server at {WEBSOCKET_URL}")
+        while True:
+            frame = frame_queue.get()
+            if frame is None: break
+
+            small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
+            rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+            face_locations = face_recognition.face_locations(rgb_small_frame, model="hog")
+            
+            face_encodings = []
+            if face_locations:
+                face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
+
+            recognized_names_in_frame = []
+            for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
+                name = "Unknown"
+                if len(known_face_encodings) > 0:
+                    face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
+                    if len(face_distances) > 0:
+                        best_match_index = face_distances.argmin()
+                        if face_distances[best_match_index] < TOLERANCE:
+                            name = known_face_names[best_match_index]
+                
+                recognized_names_in_frame.append(name)
+                top *= 4; right *= 4; bottom *= 4; left *= 4
+                cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
+                cv2.putText(frame, name, (left + 6, bottom - 6), cv2.FONT_HERSHEY_DUPLEX, 0.8, (255, 255, 255), 1)
+
+            if ws:
+                try:
+                    ws.send(json.dumps({"recognized_names": recognized_names_in_frame}))
+                except: pass
+
+            current_time = datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+            cv2.putText(frame, current_time, (10, frame.shape[0] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+
+            _, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+            frame_bytes = buffer.tobytes()
+            sys.stdout.buffer.write(b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            sys.stdout.buffer.flush()
     except Exception as e:
-        sys.stderr.write(f"Error: Could not connect to WebSocket server at {WEBSOCKET_URL}. {e}\n")
-        # WebSocket接続なしで続行するか、終了するかは要検討。ここでは続行。
-        ws = None 
+        sys.stderr.write(f"Processing thread error: {e}\n")
+
+def generate_frames():
+    global ws
+    try:
+        # websocket.create_connection を使用
+        ws = create_connection(WEBSOCKET_URL, timeout=3)
+    except Exception as e:
+        sys.stderr.write(f"WebSocket Connection Warning: {e}\n")
+        ws = None
 
     camera = cv2.VideoCapture(0)
-
     if not camera.isOpened():
-        sys.stderr.write("Error: Could not open camera. Make sure no other app is using it.\n")
-        sys.exit(1)
+        sys.stderr.write("Fatal Error: Could not open camera.\n")
+        return
+
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+    
+    frame_queue = queue.Queue(maxsize=1)
+    processing_thread = threading.Thread(target=process_and_encode_frames, args=(frame_queue,), daemon=True)
+    processing_thread.start()
 
     try:
         while True:
             success, frame = camera.read()
-            if not success:
-                sys.stderr.write("Error: Could not read frame from camera.\n")
-                break 
-            
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-            face_locations = face_recognition.face_locations(rgb_frame, model="hog") 
-            
-            face_encodings = []
-            if face_locations:
-                face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
-
-            recognized_names_in_frame = [] # このフレームで認識されたすべての名前を保持
-
-            for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
-                name = "Unknown" 
-
-                face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
-                
-                best_match_index = -1
-                if len(face_distances) > 0:
-                    best_match_index = face_distances.argmin()
-
-                if best_match_index != -1 and face_distances[best_match_index] < TOLERANCE:
-                    name = known_face_names[best_match_index]
-                
-                recognized_names_in_frame.append(name) # 認識された名前を追加
-
-                # 検出された顔の周りに矩形を描画
-                cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-
-                # 認証結果の名前を矩形の下に表示
-                cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (0, 255, 0), cv2.FILLED)
-                font = cv2.FONT_HERSHEY_DUPLEX
-                cv2.putText(frame, name, (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
-
-            # --- 認識された名前をWebSocketでNode.jsに送信 ---
-            if ws:
+            if not success: break
+            if frame_queue.empty():
                 try:
-                    # 認識されたすべての名前をJSON配列として送信
-                    ws.send(json.dumps({"recognized_names": recognized_names_in_frame}))
-                except Exception as e:
-                    sys.stderr.write(f"Error sending WebSocket data: {e}. Reconnecting...\n")
-                    ws = None # エラー時は接続をリセット
-                    try: # 再接続を試みる
-                        ws = websocket.create_connection(WEBSOCKET_URL)
-                        print("Reconnected to WebSocket server.")
-                    except Exception as re_e:
-                        sys.stderr.write(f"Failed to reconnect WebSocket: {re_e}\n")
-                        ws = None # 再接続も失敗
-
-            # --- その他の描画 (変更なし) ---
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            current_time = datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")
-            cv2.putText(frame, current_time, (10, frame.shape[0] - 10), font, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
-
-            # --- フレームをJPEG形式にエンコードし、標準出力に書き出す ---
-            _, buffer = cv2.imencode('.jpg', frame)
-            frame_bytes = buffer.tobytes()
-
-            sys.stdout.buffer.write(b'--frame\r\n')
-            sys.stdout.buffer.write(b'Content-Type: image/jpeg\r\n')
-            sys.stdout.buffer.write(b'Content-Length: ' + str(len(frame_bytes)).encode() + b'\r\n')
-            sys.stdout.buffer.write(b'\r\n')
-            sys.stdout.buffer.write(frame_bytes)
-            sys.stdout.buffer.write(b'\r\n')
-
-            sys.stdout.buffer.flush()
-
+                    frame_queue.put_nowait(frame)
+                except queue.Full: pass
+            time.sleep(0.01)
     finally:
         camera.release()
-        if ws: # 終了時にWebSocket接続を閉じる
-            ws.close()
-            print("WebSocket connection closed by Python script.")
-        sys.stderr.write("Camera released by Python script.\n")
+        if ws: ws.close()
 
 if __name__ == '__main__':
     generate_frames()

@@ -6,7 +6,7 @@ const EventEmitter = require('events');
 const bodyParser = require('body-parser');
 const WebSocket = require('ws');
 const fs = require('fs'); 
-//123
+
 const app = express();
 const port = 3000;
 
@@ -166,7 +166,7 @@ app.post('/submit_button', (req, res) => {
         minute: '2-digit',
         second: '2-digit',
         hour12: false // 24時間表記
-    }).replace(/\//g, '/').replace(/ /g, ' '); // スペースを半角に統一、スラッシュはそのまま
+    }).replace(/\//g, '/').replace(/ /g, ','); // スペースを半角に統一、スラッシュはそのまま
 
     let type = '';
     let redirectPath = '/';
