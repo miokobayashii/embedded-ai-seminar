@@ -253,8 +253,6 @@
                     if (wsAuthStatus) wsAuthStatus.close();
                 }
             };
-        
-
             eventSource.onerror = function(event) {
                 console.error('EventSource failed:', event);
                 errorMessageDiv.textContent = 'サーバーとの接続が失われました。ページをリロードしてください。';
