@@ -11,7 +11,7 @@ const app = express();
 const port = 3000;
 
 const server = require('http').createServer(app);
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({ server:server, path:'/ws_auth_status' });
 
 let pythonProcess = null;
 const cameraStateEmitter = new EventEmitter();
@@ -35,8 +35,11 @@ app.get('/tai.html', (req, res) => {
 
 app.get('/start_camera_stream', (req, res) => {
     if (pythonProcess && !pythonProcess.terminated) {
-        console.log('Camera stream already running.');
-        return res.status(200).send('Camera stream already running.');
+    //    console.log('Camera stream already running.');
+    //    return res.status(200).send('Camera stream already running.');
+    //}
+        pythonProcess.kill();
+        pythonProcess = null;
     }
 
     res.writeHead(200, {
@@ -48,7 +51,7 @@ app.get('/start_camera_stream', (req, res) => {
     try {
         pythonProcess = new PythonShell('python_camera_feed.py', {
             mode: 'binary',
-            pythonPath: 'python' // または '/usr/bin/python3' など、環境に合わせて
+            pythonPath: '/opt/anaconda3/envs/venv_lec/bin/python' // または '/usr/bin/python3' など、環境に合わせて
         });
 
         pythonProcess.stdout.on('data', (data) => {
@@ -101,7 +104,7 @@ app.get('/start_camera_stream', (req, res) => {
             if (pythonProcess && !pythonProcess.terminated) {
                 console.log('Client disconnected from stream, terminating Python process.');
                 pythonProcess.kill();
-                pythonProcess = null;
+
                 cameraStateEmitter.emit('camera_status', false);
                 wss.clients.forEach(client => {
                     if (client.readyState === WebSocket.OPEN) {
@@ -280,3 +283,4 @@ wss.on('connection', ws => {
 server.listen(port, () => {
     console.log(`Node.js server listening at http://localhost:${port}`);
 });
+

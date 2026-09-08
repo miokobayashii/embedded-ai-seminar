@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>カメラ映像と顔認証</title>
     <style>
@@ -130,7 +131,7 @@
 <body>
     <div class="video-wrapper">
         <img id="cameraStream" src="" alt="リアルタイムカメラ映像">
-        <button id="toggleCameraButton">カメラをオンにする</button>
+        <button id="toggleCameraButton">カメラをオフにする</button>
     </div>
 
     <div id="recognizedNameDisplay"></div>
@@ -157,21 +158,22 @@
         // hidden inputフィールドへの参照も取得 (今回は一つにまとめる)
         const recognizedNameInput = document.getElementById('recognizedNameInput');
 
-        let isCameraActive = false;
+        let isCameraActive = true;
         let wsAuthStatus;
-
+        let camerastart = false;
         function setButtonsEnabled(enabled) {
             button1.disabled = !enabled;
             button2.disabled = !enabled;
         }
 
         function startCameraStream() {
+
             errorMessageDiv.textContent = 'カメラを起動中...';
             cameraStreamImg.src = '/start_camera_stream';
             cameraStreamImg.style.display = 'block';
 
             cameraStreamImg.onerror = function() {
-                errorMessageDiv.textContent = "カメラストリームの読み込みに失敗しました。サーバーが実行されているか、カメラにアクセスできるか確認してください。";
+                errorMessageDiv.textContent = "カメラストリームの読み込みに失敗しました。";
                 cameraStreamImg.src = '';
                 cameraStreamImg.style.display = 'none';
                 isCameraActive = false;
@@ -180,25 +182,16 @@
                 if (wsAuthStatus) wsAuthStatus.close();
             };
 
-            if (!wsAuthStatus || wsAuthStatus.readyState === WebSocket.CLOSED) {
-                connectWebSocket();
-            }
+            //if (!wsAuthStatus || wsAuthStatus.readyState === WebSocket.CLOSED) {
+            //    connectWebSocket();
+            //}
         }
 
         async function stopCameraStream() {
             try {
-                const response = await fetch('/stop_camera_stream', { method: 'POST' });
-                cameraStreamImg.src = '';
-                cameraStreamImg.style.display = 'none';
-                isCameraActive = false;
-                toggleButton.textContent = 'カメラをオンにする';
-                setButtonsEnabled(false);
-                recognizedNameDisplay.textContent = '';
-                // hidden input の値もクリア
-                recognizedNameInput.value = '';
-
-                errorMessageDiv.textContent = 'カメラはオフです。';
-                if (wsAuthStatus) wsAuthStatus.close();
+                errorMessageDiv.textContent = 'カメラはを停止中...';
+                await fetch('/stop_camera_stream', { method: 'POST' });
+ 
             } catch (error) {
                 console.error('Failed to stop camera stream:', error);
                 errorMessageDiv.textContent = 'カメラの停止中にエラーが発生しました。';
@@ -213,58 +206,68 @@
             }
         });
 
-        const eventSource = new EventSource('/camera_status_updates');
+        let eventSource = null;
+        function connectEventSource(event){
+            if (eventSource) {
+                eventSource.close();
+            }
+            eventSource = new EventSource('/camera_status_updates');
+        
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.isCameraOn !== undefined) {
+                    isCameraActive = data.isCameraOn;
+                    setButtonsEnabled(isCameraActive);
+                    toggleButton.textContent = isCameraActive ? 'カメラをオフにする' : 'カメラをオンにする';
+                    if (isCameraActive) {
+                        errorMessageDiv.textContent = '';
+                        cameraStreamImg.style.display = 'block';
+                        // リロード時や戻ってきた時、サーバーがONなのにフロントのsrcが空なら再設定
+                        if (!cameraStreamImg.src || cameraStreamImg.src.navigator) {
+                            cameraStreamImg.src = '/start_camera_stream';
+                        }
 
-        eventSource.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-            if (data.isCameraOn !== undefined) {
-                isCameraActive = data.isCameraOn;
-                setButtonsEnabled(isCameraActive);
-                toggleButton.textContent = isCameraActive ? 'カメラをオフにする' : 'カメラをオンにする';
-                if (isCameraActive) {
-                    errorMessageDiv.textContent = '';
-                    cameraStreamImg.style.display = 'block';
-                    if (!wsAuthStatus || wsAuthStatus.readyState === WebSocket.CLOSED) {
-                        connectWebSocket();
+                        if (!wsAuthStatus || wsAuthStatus.readyState === WebSocket.CLOSED) {
+                            connectWebSocket();
+                        }
+                    } else {
+                        errorMessageDiv.textContent = 'カメラはオフです。';
+                        cameraStreamImg.src = '';
+                        cameraStreamImg.style.display = 'none';
+                        recognizedNameDisplay.textContent = '';
+                        // hidden input の値もクリア
+                        recognizedNameInput.value = '';
+                        if (wsAuthStatus) wsAuthStatus.close();
                     }
-                } else {
-                     errorMessageDiv.textContent = 'カメラはオフです。';
-                     cameraStreamImg.src = '';
-                     cameraStreamImg.style.display = 'none';
-                     recognizedNameDisplay.textContent = '';
-                     // hidden input の値もクリア
-                     recognizedNameInput.value = '';
-                     if (wsAuthStatus) wsAuthStatus.close();
                 }
-            }
-            if (data.error) {
-                errorMessageDiv.textContent = data.message;
-                cameraStreamImg.src = '';
-                cameraStreamImg.style.display = 'none';
-                isCameraActive = false;
-                setButtonsEnabled(false);
-                toggleButton.textContent = 'カメラをオンにする';
-                recognizedNameDisplay.textContent = '';
-                // hidden input の値もクリア
-                recognizedNameInput.value = '';
-                if (wsAuthStatus) wsAuthStatus.close();
-            }
-        };
+                if (data.error) {
+                    errorMessageDiv.textContent = data.message;
+                    cameraStreamImg.src = '';
+                    cameraStreamImg.style.display = 'none';
+                    isCameraActive = false;
+                    setButtonsEnabled(false);
+                    toggleButton.textContent = 'カメラをオンにする';
+                    recognizedNameDisplay.textContent = '';
+                    // hidden input の値もクリア
+                    recognizedNameInput.value = '';
+                    if (wsAuthStatus) wsAuthStatus.close();
+                }
+            };
+        
 
-        eventSource.onerror = function(event) {
-            console.error('EventSource failed:', event);
-            errorMessageDiv.textContent = 'サーバーとの接続が失われました。ページをリロードしてください。';
-            eventSource.close();
-            if (wsAuthStatus) wsAuthStatus.close();
-        };
+            eventSource.onerror = function(event) {
+                console.error('EventSource failed:', event);
+                errorMessageDiv.textContent = 'サーバーとの接続が失われました。ページをリロードしてください。';
+            };
+        }
 
         function connectWebSocket() {
-            if (wsAuthStatus && wsAuthStatus.readyState === WebSocket.OPEN) {
+            if (wsAuthStatus && (wsAuthStatus.readyState === WebSocket.OPEN || wsAuthStatus.readyState === WebSocket.CONNECTING)) {
                 console.log("WebSocket connection already open.");
                 return;
             }
 
-            wsAuthStatus = new WebSocket('ws://' + window.location.host + '/ws_auth_status');
+            wsAuthStatus = new WebSocket('ws://' + window.location.host + '/ws_auth_status'); //main.jsのws_auth_statusが実行される
 
             wsAuthStatus.onopen = () => {
                 console.log('WebSocket connection established for auth status.');
@@ -303,8 +306,17 @@
             };
         }
 
-        window.addEventListener('load', () => {
-            startCameraStream();
+
+        window.addEventListener('pageshow', (event) => {
+            console.log('---isCameraActive:', new Date().getTime());
+            if (!wsAuthStatus || wsAuthStatus.readyState === WebSocket.CLOSED) {
+                connectWebSocket();
+            }
+            if(!camerastart){
+                startCameraStream();
+                camerastart = true;
+            }
+            connectEventSource();
         });
     </script>
 </body>

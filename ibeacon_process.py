@@ -58,7 +58,7 @@ class iBeaconProcess:
         self._run_command(['sudo', 'hcitool', '-i', 'hci0', 'cmd', '0x08', '0x000a', '00'], "4. アドバタイズの停止")
 
 # 使用例
-#if __name__ == "__main__":
-#    beacon = iBeaconProcess()
+if __name__ == "__main__":
+    beacon = iBeaconProcess()
     # 2秒間ビーコンを発信
-#    beacon.start_beacon(duration=2)
+    beacon.start_beacon(duration=1)
