@@ -8,6 +8,8 @@ import json
 import threading
 import queue
 import os
+from ultralytics import YOLO
+
 
 # websocket-client の安全なインポート
 try:
@@ -35,6 +37,7 @@ known_face_names = []
 
 WEBSOCKET_URL = "ws://localhost:3000/ws_auth_status" 
 ws = None
+model = YOLO('yolov8n-face.pt') 
 
 # 登録済みエンコーディングのロード
 try:
@@ -79,13 +82,26 @@ def process_and_encode_frames(frame_queue):
 
             # 1/4 サイズに縮小して顔検出の負荷を大幅軽減
             small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
+            #face_recognition用
             rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-            face_locations = face_recognition.face_locations(rgb_small_frame, model="hog")
-            
+            #face_locations = face_recognition.face_locations(rgb_small_frame, model="hog")
+
+            #1枚のフレームに対する結果が返ってくる
+            results = model(small_frame, stream=True)
+            face_locations = []
+            for result in results:
+                boxes = result.boxes
+            #boxes = result.boxes #複数の顔が検出される可能性がある。
+            for box in boxes:
+                # 座標の取得 (左上x, 左上y, 右下x, 右下y)
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                # face_locations 用--> y1, x2, y2, x1 
+                face_locations.append((y1, x2, y2, x1))
+
             face_encodings = []
             if face_locations:
                 face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
-
+ #
             recognized_names_in_frame = []
 
             for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
@@ -96,15 +112,15 @@ def process_and_encode_frames(frame_queue):
                         best_match_index = face_distances.argmin()
                         if face_distances[best_match_index] < TOLERANCE:
                             name = known_face_names[best_match_index]
-                            
-                            # 顔認証成功時、ビーコン処理をバックグラウンドで開始（画面をフリーズさせない）
-                            #if name != "Unknown" and not beacon_running:
-                            #    beacon_running = True
-                            #    threading.Thread(target=start_beacon_in_background, daemon=True).start()
-
-                recognized_names_in_frame.append(name)
-
-                # 元の解像度に枠サイズを復元 (x4)
+ #                           
+ #                           # 顔認証成功時、ビーコン処理をバックグラウンドで開始（画面をフリーズさせない）
+ #                           #if name != "Unknown" and not beacon_running:
+ #                           #    beacon_running = True
+ #                           #    threading.Thread(target=start_beacon_in_background, daemon=True).start()
+ #
+                        recognized_names_in_frame.append(name)
+ #
+ #                # 元の解像度に枠サイズを復元 (x4)
                 top *= 4
                 right *= 4
                 bottom *= 4

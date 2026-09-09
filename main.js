@@ -34,7 +34,7 @@ app.get('/tai.html', (req, res) => {
 
 
 app.get('/start_camera_stream', (req, res) => {
-    if (pythonProcess && !pythonProcess.terminated) {
+   if (pythonProcess && !pythonProcess.terminated) {
     //    console.log('Camera stream already running.');
     //    return res.status(200).send('Camera stream already running.');
     //}
@@ -51,7 +51,7 @@ app.get('/start_camera_stream', (req, res) => {
     try {
         pythonProcess = new PythonShell('python_camera_feed.py', {
             mode: 'binary',
-            pythonPath: 'python' // または '/usr/bin/python3' など、環境に合わせて
+            pythonPath: '/opt/anaconda3/envs/venv_lec/bin/python' // または '/usr/bin/python3' など、環境に合わせて
         });
 
         pythonProcess.stdout.on('data', (data) => {
