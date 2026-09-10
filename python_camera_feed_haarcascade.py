@@ -34,8 +34,10 @@ WEBSOCKET_URL = "ws://localhost:3000/ws_auth_status"
 ws = None
 
 # Haar Cascade 分類器
-#face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
-model = cv2.FaceDetectorYN.create('face_detection_yunet_2023mar.onnx', "", (160, 120))
+face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+if face_cascade.empty():
+    # システム標準パスフォールバック
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
 # 登録データロード
 try:
@@ -68,23 +70,16 @@ def process_faces_worker(frame_queue):
             gray_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
 
             # Haar Cascade で位置検出（パラメータ調整で高速化）
-#            faces = face_cascade.detectMultiScale(
-##                gray_frame, 
-#                scaleFactor=1.2, 
-#                minNeighbors=4, 
-#                minSize=(20, 20)
-#            )
-            h, w, _ = small_frame.shape
-            model.setInputSize((w, h))
-            retval, faces  = model.detect(small_frame)  # Yunetで顔検出
+            faces = face_cascade.detectMultiScale(
+                gray_frame, 
+                scaleFactor=1.2, 
+                minNeighbors=4, 
+                minSize=(20, 20)
+            )
+
             face_locations = []
-            if faces is not None:
-                for face in faces:
-                    x, y, w, h = map(int, face[:4])
-                    face_locations.append((y, x + w, y + h, x))
-            else:
-            # 必要であれば、顔が見つからない時の処理をここに書けます
-                #sys.stderr.write("No faces detected in this frame.\n")
+            for (x, y, w, h) in faces:
+                face_locations.append((y, x + w, y + h, x))
 
             current_faces = []
             recognized_names_in_frame = []
@@ -93,22 +88,7 @@ def process_faces_worker(frame_queue):
  #               rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
  #               face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
                  for (top, right, bottom, left) in face_locations:
-                    #sys.stderr.write(f"{top}, {right}, {bottom}, {left} \n")
-                    current_faces.append((top*4, right*4, bottom*4, left*4))
-                    if((top<15) and (right>110) and (bottom>80) and (left<60)):
-                        rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-                        detected_locations = [(top, right, bottom, left)]
-                        face_encodings = face_recognition.face_encodings(rgb_small_frame, known_face_locations=detected_locations)
-                        name = "Unknown"
-                        if len(known_face_encodings) > 0:
-                            face_distances = face_recognition.face_distance(known_face_encodings, face_encodings[0])
-                            if len(face_distances) > 0:
-                                best_match_index = face_distances.argmin()
-                                if face_distances[best_match_index] < TOLERANCE:
-                                    name = known_face_names[best_match_index]
-                        recognized_names_in_frame.append(name)
-#                        face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
-                    
+                    current_faces.append((top * 4, right * 4, bottom * 4, left * 4))
  #               for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
  #                   name = "Unknown"
  #                   if len(known_face_encodings) > 0:
