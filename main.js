@@ -16,6 +16,9 @@ const wss = new WebSocket.Server({ server:server, path:'/ws_auth_status' });
 let pythonProcess = null;
 const cameraStateEmitter = new EventEmitter();
 
+// 指定したミリ秒だけ処理を待つための共通関数
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 app.use(express.static('public')); // publicディレクトリを静的ファイルとして提供
 app.use(bodyParser.urlencoded({ extended: true })); 
 
@@ -31,15 +34,27 @@ app.get('/shu.html', (req, res) => {
 app.get('/tai.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'tai.html'));
 });
+app.get('/top', async (req, res) => {
+    try {
+        // 💡 ここで 2秒（2000ms）待機させます
+        await sleep(2000); 
 
+        // 待機した後にファイルを送信
+        res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    } catch (error) {
+        console.error("エラーが発生しました:", error);
+        res.status(500).send("Internal Server Error");
+    }
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 app.get('/start_camera_stream', (req, res) => {
    if (pythonProcess && !pythonProcess.terminated) {
-    //    console.log('Camera stream already running.');
-    //    return res.status(200).send('Camera stream already running.');
+        console.log('Camera stream already running.');
+        return res.status(200).send('Camera stream already running.');
     //}
-        pythonProcess.kill();
-        pythonProcess = null;
+    //    pythonProcess.kill();
+    //    pythonProcess = null;
     }
 
     res.writeHead(200, {
@@ -51,7 +66,7 @@ app.get('/start_camera_stream', (req, res) => {
     try {
         pythonProcess = new PythonShell('python_camera_feed.py', {
             mode: 'binary',
-            pythonPath: '/opt/anaconda3/envs/venv_lec/bin/python' // または '/usr/bin/python3' など、環境に合わせて
+            pythonPath: 'python' // または '/usr/bin/python3' など、環境に合わせて
         });
 
         pythonProcess.stdout.on('data', (data) => {

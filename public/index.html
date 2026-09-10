@@ -182,9 +182,9 @@
                 if (wsAuthStatus) wsAuthStatus.close();
             };
 
-            //if (!wsAuthStatus || wsAuthStatus.readyState === WebSocket.CLOSED) {
-            //    connectWebSocket();
-            //}
+            if (!wsAuthStatus || wsAuthStatus.readyState === WebSocket.CLOSED) {
+                connectWebSocket();
+            }
         }
 
         async function stopCameraStream() {
