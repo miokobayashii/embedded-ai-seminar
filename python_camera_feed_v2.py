@@ -17,12 +17,6 @@ except ImportError:
     sys.stderr.write("Error: websocket-client is not installed.\n")
     sys.exit(1)
 
-# iBeaconモジュールの安全なインポート
-try:
-    import ibeacon_process as ibcon
-except ImportError:
-    ibcon = None
-
 # --- 顔認証の設定 ---
 ENCODINGS_FILE = "encodings.pkl"
 TOLERANCE = 0.6 
@@ -32,12 +26,6 @@ known_face_names = []
 
 WEBSOCKET_URL = "ws://localhost:3000/ws_auth_status" 
 ws = None
-
-# Haar Cascade 分類器
-face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
-if face_cascade.empty():
-    # システム標準パスフォールバック
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
 # 登録データロード
 try:
@@ -65,28 +53,21 @@ def process_faces_worker(frame_queue):
             break
 
         try:
-            # 1/4 サイズで超軽量化
-            small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
-            gray_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
+            # 高速化のため、0.5倍にリサイズ（元の320x240から160x120へ）
+            # あまり縮小しすぎると顔を認識できなくなります
+            RESIZE_FACTOR = 0.5
+            small_frame = cv2.resize(frame, (0, 0), fx=RESIZE_FACTOR, fy=RESIZE_FACTOR)
+            rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
 
-            # Haar Cascade で位置検出（パラメータ調整で高速化）
-            faces = face_cascade.detectMultiScale(
-                gray_frame, 
-                scaleFactor=1.2, 
-                minNeighbors=4, 
-                minSize=(20, 20)
-            )
-
-            face_locations = []
-            for (x, y, w, h) in faces:
-                face_locations.append((y, x + w, y + h, x))
+            # Haar Cascade を廃止し、HOGベースの高速検出に一本化
+            face_locations = face_recognition.face_locations(rgb_small_frame, model="hog")
 
             current_faces = []
             recognized_names_in_frame = []
 
             if face_locations:
-                rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-                face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
+                # model="small" を指定して特徴量抽出を劇的に高速化 (5点ランドマークモデル)
+                face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations, model="small")
 
                 for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
                     name = "Unknown"
@@ -98,8 +79,9 @@ def process_faces_worker(frame_queue):
                                 name = known_face_names[best_match_index]
 
                     recognized_names_in_frame.append(name)
-                    # 1/4 から元の解像度 (x4) へ復元して格納
-                    current_faces.append((top * 4, right * 4, bottom * 4, left * 4, name))
+                    # 元の解像度へ復元して格納
+                    inv_factor = int(1 / RESIZE_FACTOR)
+                    current_faces.append((top * inv_factor, right * inv_factor, bottom * inv_factor, left * inv_factor, name))
 
             # 描画用座標データを安全に上書き更新
             with faces_lock:
@@ -135,8 +117,9 @@ def generate_frames():
         sys.stderr.write("Fatal Error: Could not open camera.\n")
         return
 
-    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 160)
-    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 120)
+    # 最低限の顔認識が担保できる実用的な低解像度 (320x240) に設定
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
     
     # 認識スレッド起動
     frame_queue = queue.Queue(maxsize=1)
@@ -149,7 +132,7 @@ def generate_frames():
             if not success:
                 break
             
-            # 1. 認証スレッドへ最新フレームを送信（処理中なら投げてスキップ）
+            # 1. 認証スレッドへ最新フレームを送信
             if frame_queue.empty():
                 try:
                     frame_queue.put_nowait(frame.copy())
@@ -161,20 +144,20 @@ def generate_frames():
                 for top, right, bottom, left, name in latest_faces:
                     cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
                     cv2.putText(frame, name, (left + 6, bottom - 6), 
-                                cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 255, 255), 1)
+                                cv2.FONT_HERSHEY_DUPLEX, 0.5, (255, 255, 255), 1)
 
             # 日時描画
             current_time = datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")
             cv2.putText(frame, current_time, (10, frame.shape[0] - 10), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
 
-            # 3. メインスレッドから即座にストリーム書き出し（ここで映像がヌルヌル動きます）
+            # 3. メインスレッドから即座にストリーム書き出し
             _, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 65])
             frame_bytes = buffer.tobytes()
             sys.stdout.buffer.write(b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
             sys.stdout.buffer.flush()
 
-            time.sleep(0.03) # 約 30 FPS を上限とする
+            time.sleep(0.03) # 約 30 FPS
 
     finally:
         camera.release()

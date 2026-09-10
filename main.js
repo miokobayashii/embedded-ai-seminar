@@ -64,7 +64,7 @@ app.get('/start_camera_stream', (req, res) => {
     });
 
     try {
-        pythonProcess = new PythonShell('python_camera_feed.py', {
+        pythonProcess = new PythonShell('python_camera_feed_v2.py', {
             mode: 'binary',
             pythonPath: 'python' // または '/usr/bin/python3' など、環境に合わせて
         });
