@@ -135,8 +135,8 @@ def generate_frames():
         sys.stderr.write("Fatal Error: Could not open camera.\n")
         return
 
-    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
-    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 160)
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 120)
     
     # 認識スレッド起動
     frame_queue = queue.Queue(maxsize=1)
