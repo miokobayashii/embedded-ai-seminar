@@ -34,10 +34,8 @@ WEBSOCKET_URL = "ws://localhost:3000/ws_auth_status"
 ws = None
 
 # Haar Cascade 分類器
-face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
-if face_cascade.empty():
-    # システム標準パスフォールバック
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+#face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+model = cv2.FaceDetectorYN.create('face_detection_yunet_2023mar.onnx', "", (160, 120))
 
 # 登録データロード
 try:
@@ -70,36 +68,44 @@ def process_faces_worker(frame_queue):
             gray_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
 
             # Haar Cascade で位置検出（パラメータ調整で高速化）
-            faces = face_cascade.detectMultiScale(
-                gray_frame, 
-                scaleFactor=1.2, 
-                minNeighbors=4, 
-                minSize=(20, 20)
-            )
-
+#            faces = face_cascade.detectMultiScale(
+##                gray_frame, 
+#                scaleFactor=1.2, 
+#                minNeighbors=4, 
+#                minSize=(20, 20)
+#            )
+            h, w, _ = small_frame.shape
+            model.setInputSize((w, h))
+            retval, faces  = model.detect(small_frame)  # Yunetで顔検出
             face_locations = []
-            for (x, y, w, h) in faces:
-                face_locations.append((y, x + w, y + h, x))
-
+            if faces is not None:
+                for face in faces:
+                    x, y, w, h = map(int, face[:4])
+                    face_locations.append((y, x + w, y + h, x))
+            else:
+            # 必要であれば、顔が見つからない時の処理をここに書けます
+                print("No faces detected in this frame.")
+                
             current_faces = []
             recognized_names_in_frame = []
 
             if face_locations:
-                rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-                face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
-
-                for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
-                    name = "Unknown"
-                    if len(known_face_encodings) > 0:
-                        face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
-                        if len(face_distances) > 0:
-                            best_match_index = face_distances.argmin()
-                            if face_distances[best_match_index] < TOLERANCE:
-                                name = known_face_names[best_match_index]
-
-                    recognized_names_in_frame.append(name)
-                    # 1/4 から元の解像度 (x4) へ復元して格納
-                    current_faces.append((top * 4, right * 4, bottom * 4, left * 4, name))
+ #               rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+ #               face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
+                 for (top, right, bottom, left) in face_locations:
+                    current_faces.append((top*4, right*4, bottom*4, left*4))
+ #               for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
+ #                   name = "Unknown"
+ #                   if len(known_face_encodings) > 0:
+ #                       face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
+ #                       if len(face_distances) > 0:
+ #                           best_match_index = face_distances.argmin()
+ #                           if face_distances[best_match_index] < TOLERANCE:
+ #                               name = known_face_names[best_match_index]
+#
+ #                   recognized_names_in_frame.append(name)
+  #                  # 1/4 から元の解像度 (x4) へ復元して格納
+  #                  current_faces.append((top * 4, right * 4, bottom * 4, left * 4, name))
 
             # 描画用座標データを安全に上書き更新
             with faces_lock:
@@ -158,10 +164,11 @@ def generate_frames():
 
             # 2. 最新の認識結果（枠と名前）をメイン画像へ描画
             with faces_lock:
-                for top, right, bottom, left, name in latest_faces:
+                #for top, right, bottom, left, name in latest_faces:
+                for top, right, bottom, left in latest_faces:
                     cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-                    cv2.putText(frame, name, (left + 6, bottom - 6), 
-                                cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 255, 255), 1)
+                    #cv2.putText(frame, name, (left + 6, bottom - 6), 
+                    #            cv2.FONT_HERSHEY_DUPLEX, 0.6, (255, 255, 255), 1)
 
             # 日時描画
             current_time = datetime.datetime.now().strftime("%Y/%m/%d %H:%M:%S")
