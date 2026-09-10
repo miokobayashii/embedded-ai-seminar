@@ -5,4 +5,4 @@ from ultralytics import YOLO
 # (yolov8n-faceは公式のハブやサードパーティのカスタムモデルとして広く使われています)
 model = YOLO('yolov8n-face.pt') 
 
-model.export(format='onnx', opset=12)  # ONNX形式でエクスポート
+model.export(format='onnx', imgsz=(96,96), opset=12)  # ONNX形式でエクスポート
