@@ -8,10 +8,6 @@ import json
 import threading
 import queue
 import os
-from ultralytics import YOLO
-
-#os.environ["OMP_NUM_THREADS"] = "1"
-#os.environ["MKL_NUM_THREADS"] = "1"
 
 
 # websocket-client の安全なインポート
@@ -40,7 +36,9 @@ known_face_names = []
 
 WEBSOCKET_URL = "ws://localhost:3000/ws_auth_status" 
 ws = None
-model = YOLO('yolov8n-face.onnx') 
+
+face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+
 
 # 登録済みエンコーディングのロード
 try:
@@ -88,19 +86,23 @@ def process_and_encode_frames(frame_queue):
 #            large_frame = cv2.resize(frame, (0, 0), fx=2, fy=2)
             #face_recognition用
             rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-            #face_locations = face_recognition.face_locations(rgb_small_frame, model="hog")
-
-            #1枚のフレームに対する結果が返ってくる
-            results = model(small_frame,verbose=False)  # YOLOv8で顔検出
+            gray_frame = cv2.cvtColor(rgb_small_frame, cv2.COLOR_BGR2GRAY)
+            faces = face_cascade.detectMultiScale(
+                    gray_frame, 
+                    scaleFactor=1.1, 
+                    minNeighbors=5, 
+                    minSize=(30, 30)
+             )
 
             face_locations = []
-            for result in results:
-                if result.boxes is not None:
-                    for box in result.boxes:
-                        # 座標の取得 (左上x, 左上y, 右下x, 右下y)
-                        x1, y1, x2, y2 = map(int, box.xyxy[0])
- #                       # face_locations 用--> y1, x2, y2, x1 
-                        face_locations.append((y1, x2, y2, x1))
+            #if results.detections:
+            for (x, y, w, h) in faces:
+                right = x + w
+                top = y
+                bottom = y + h
+                left = x
+                # face_locations 用--> y1, x2, y2, x1 
+                face_locations.append((top, right, bottom, left))
 
             face_encodings = []
             if face_locations:
