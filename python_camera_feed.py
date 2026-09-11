@@ -84,7 +84,9 @@ def process_faces_worker(frame_queue):
                     face_locations.append((y, x + w, y + h, x))
             else:
             # 必要であれば、顔が見つからない時の処理をここに書けます
+                pass
                 #sys.stderr.write("No faces detected in this frame.\n")
+
 
             current_faces = []
             recognized_names_in_frame = []

@@ -69,7 +69,7 @@
             min-height: 1.2em;
             text-align: center;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-            width: 80%;
+            width: 88%;
             max-width: 600px;
         }
 
@@ -82,13 +82,13 @@
         /* フォーム内のボタンを囲む新しいdivにflexboxを適用 */
         .buttons-wrapper { /* 新しいCSSクラス */
             display: flex;
-            gap: 50px; /* ボタン間のスペース */
+            gap: 10px; /* ボタン間のスペース */
             justify-content: center; /* ボタンを中央揃え */
         }
 
         .button {
-            width: 400px;
-            height: 200px;
+            width: 100px;
+            height: 225px;
             color: white;
             border: none;
             border-radius: 5px;
@@ -129,20 +129,19 @@
     </style>
 </head>
 <body>
-    <div class="video-wrapper">
-        <img id="cameraStream" src="" alt="リアルタイムカメラ映像">
-        <button id="toggleCameraButton">カメラをオフにする</button>
-    </div>
-
-    <div id="recognizedNameDisplay"></div>
-
     <div class="buttons-form-container">
         <form action="/submit_button" method="post">
             <input type="hidden" id="recognizedNameInput" name="recognized_person_name" value=""> <div class="buttons-wrapper">
                 <button type="submit" class="button button1" name="button_id" value="button1" id="button1" disabled>出勤</button>
+                <div class="video-wrapper">
+                    <img id="cameraStream" src="" alt="リアルタイムカメラ映像">
+                    <button id="toggleCameraButton">カメラをオフにする</button>
+                </div>
+
                 <button type="submit" class="button button2" name="button_id" value="button2" id="button2" disabled>退勤</button>
             </div>
         </form>
+        <div id="recognizedNameDisplay"></div>
     </div>
 
     <div class="message" id="errorMessage"></div>
